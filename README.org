@@ -1,0 +1,53 @@
+#+title: Mallocule - A Simple Memory Allocator
+
+* Mallocule
+
+Tiny memory allocator written in C for educational purposes.
+
+Mallocule provides a basic ~sbrk~-based allocator that manages the program's heap using a simple linked list of memory blocks, or "molecules."
+
+* Usage
+
+To use Mallocule, include ~mallocule.h~ in your project. In *one* C file, you must define ~MALLOCULE_IMPL~ before the include to pull in the implementation.
+
+#+BEGIN_SRC c
+#define MALLOCULE_IMPL
+#include "mallocule.h"
+
+int main() {
+    // Allocate a "molecule"
+    int *my_int = mol_alloc(sizeof(int));
+    if (my_int) {
+        *my_int = 42;
+    }
+
+    // Free the "molecule"
+    mol_free(my_int);
+
+    return 0;
+}
+#+END_SRC
+
+* API
+
+- ~void* mol_alloc(size_t size)~: Allocates a block of memory of at least ~size~ bytes.
+- ~void mol_free(void* ptr)~: Frees a previously allocated block of memory.
+
+* Testing
+
+A ~Makefile~ is provided to build the test program (~test.c~).
+
+- To build the test program:
+  #+BEGIN_SRC sh
+  make
+  #+END_SRC
+
+- To run the tests:
+  #+BEGIN_SRC sh
+  make run
+  #+END_SRC
+
+- To clean up build files:
+  #+BEGIN_SRC sh
+  make clean
+  #+END_SRC
