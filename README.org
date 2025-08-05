@@ -1,5 +1,3 @@
-#+title: Mallocule - A Simple Memory Allocator
-
 * Mallocule
 
 Tiny memory allocator written in C for educational purposes.
@@ -38,16 +36,16 @@ int main() {
 A ~Makefile~ is provided to build the test program (~test.c~).
 
 - To build the test program:
-  #+BEGIN_SRC sh
-  make
-  #+END_SRC
+#+BEGIN_SRC sh
+make
+#+END_SRC
 
 - To run the tests:
-  #+BEGIN_SRC sh
-  make run
-  #+END_SRC
+#+BEGIN_SRC sh
+make run
+#+END_SRC
 
 - To clean up build files:
-  #+BEGIN_SRC sh
-  make clean
-  #+END_SRC
+#+BEGIN_SRC sh
+make clean
+#+END_SRC
