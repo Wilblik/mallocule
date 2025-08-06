@@ -20,6 +20,13 @@ typedef struct molecule_t {
 void* mol_alloc(size_t size);
 void mol_free(void* ptr);
 
+#ifdef MALLOCULE_DEBUG
+void print_heap_state();
+#define DEBUG_PRINT_HEAP() print_heap_state()
+#else
+#define DEBUG_PRINT_HEAP() (void)0
+#endif
+
 #ifdef MALLOCULE_IMPL
 
 #include <unistd.h>
@@ -29,6 +36,26 @@ void mol_free(void* ptr);
 
 static molecule_t* head = NULL;
 static molecule_t* tail = NULL;
+
+#ifdef MALLOCULE_DEBUG
+void print_heap_state() {
+    molecule_t* curr = head;
+    if (curr == NULL) {
+        printf("Heap is empty.\n");
+        return;
+    }
+    printf("--- Heap State ---\n");
+    printf("HEAD -> ");
+    while (curr != NULL) {
+        printf("[%s: %zu bytes @ %p]", curr->is_free ? "FREE" : "USED", curr->size, (void*)curr);
+        if (curr->next != NULL) {
+            printf(" <=> ");
+        }
+        curr = curr->next;
+    }
+    printf(" <- TAIL\n------------------\n");
+}
+#endif
 
 void* mol_alloc(size_t size) {
     if (size == 0) return NULL;
