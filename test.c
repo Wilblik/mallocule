@@ -21,7 +21,29 @@ void test_basic() {
 
     mol_free(p1);
     mol_free(p2);
-    printf("Basic checks complete.\n");
+}
+
+void test_alignment() {
+    printf("\n--- Running Alignment Test ---\n");
+
+    void* p1 = mol_alloc(1);
+    void* p2 = mol_alloc(3);
+    void* p3 = mol_alloc(7);
+    void* p4 = mol_alloc(15);
+
+    assert(p1 != NULL && p2 != NULL && p3 != NULL && p4 != NULL);
+
+    assert((uintptr_t)p1 % ALIGNMENT == 0);
+    assert((uintptr_t)p2 % ALIGNMENT == 0);
+    assert((uintptr_t)p3 % ALIGNMENT == 0);
+    assert((uintptr_t)p4 % ALIGNMENT == 0);
+
+    printf("Test Passed: All pointers are correctly aligned to %d bytes!\n", ALIGNMENT);
+
+    mol_free(p1);
+    mol_free(p2);
+    mol_free(p3);
+    mol_free(p4);
 }
 
 void test_reuse() {
@@ -66,6 +88,32 @@ void test_linking_and_traversal() {
     mol_free(p3);
 }
 
+void test_coalescing() {
+    printf("\n--- Running Coalescing Test ---\n");
+
+    void* p1 = mol_alloc(100);
+    void* p2 = mol_alloc(100);
+    void* p3 = mol_alloc(100);
+    assert(p1 != NULL && p2 != NULL && p3 != NULL);
+    printf("Step 1: Allocated p1, p2, and p3.\n");
+
+    mol_free(p1);
+    mol_free(p3);
+    printf("Step 2: Freed p1 and p3.\n");
+
+    mol_free(p2);
+    printf("Step 3: Freed p2, triggering coalesce.\n");
+
+    void* p4 = mol_alloc(300 + sizeof(molecule_t)); // Request space larger than any single block
+    assert(p4 != NULL);
+    printf("Step 4: Allocated large block p4.\n");
+
+    assert(p4 == p1);
+    printf("Test Passed: Blocks were successfully coalesced!\n");
+
+    mol_free(p4);
+}
+
 void test_stress() {
     printf("\n--- Running Stress Test ---\n");
     void *p;
@@ -85,35 +133,14 @@ void test_stress() {
     printf("Rapid churn test passed.\n");
 }
 
-void test_alignment() {
-    printf("\n--- Running Alignment Test ---\n");
-
-    void* p1 = mol_alloc(1);
-    void* p2 = mol_alloc(3);
-    void* p3 = mol_alloc(7);
-    void* p4 = mol_alloc(15);
-
-    assert(p1 != NULL && p2 != NULL && p3 != NULL && p4 != NULL);
-
-    assert((uintptr_t)p1 % ALIGNMENT == 0);
-    assert((uintptr_t)p2 % ALIGNMENT == 0);
-    assert((uintptr_t)p3 % ALIGNMENT == 0);
-    assert((uintptr_t)p4 % ALIGNMENT == 0);
-
-    printf("Test Passed: All pointers are correctly aligned to %d bytes!\n", ALIGNMENT);
-
-    mol_free(p1);
-    mol_free(p2);
-    mol_free(p3);
-    mol_free(p4);
-}
 
 int main() {
     test_basic();
+    test_alignment();
     test_reuse();
     test_linking_and_traversal();
+    test_coalescing();
     test_stress();
-    test_alignment();
 
     printf("\n--- TESTS FINISHED SUCCESSFULLY ---\n");
     return 0;

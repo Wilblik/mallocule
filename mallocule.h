@@ -3,10 +3,18 @@
 
 #include <stdlib.h>
 
+// TODO:
+// - Split block on allocate if it's too large.
+// - Add mol_realloc()
+// - Add multithreading support
+// - Use mmap for large allocations
+// - canaries and guard pages
+
 typedef struct molecule_t {
     size_t size;
     unsigned is_free;
     struct molecule_t* next;
+    struct molecule_t* prev;
 } molecule_t;
 
 void* mol_alloc(size_t size);
@@ -19,9 +27,9 @@ void mol_free(void* ptr);
 #define ALIGNMENT 8
 #define ALIGN(size) (((size) + (ALIGNMENT-1)) & ~(ALIGNMENT-1))
 
-molecule_t* head = NULL;
+static molecule_t* head = NULL;
+static molecule_t* tail = NULL;
 
-// TODO Consider splitting the block if it's too large.
 void* mol_alloc(size_t size) {
     if (size == 0) return NULL;
 
@@ -44,25 +52,47 @@ void* mol_alloc(size_t size) {
     new_block->is_free = 0;
     new_block->size = requested_size,
     new_block->next = NULL;
+    new_block->prev = tail;
 
     if (head == NULL) {
         head = new_block;
     } else {
-        curr = head;
-        while (curr->next != NULL) {
-            curr = curr->next;
-        }
-        curr->next = new_block;
+        tail->next = new_block;
     }
+    tail = new_block;
 
     return (void*)(new_block + 1);
 }
 
-// TODO Coalesce with the next block if it's also free.
 void mol_free(void *ptr) {
     if (ptr == NULL) return;
-    molecule_t* block_header = (molecule_t*)ptr - 1;
-    block_header->is_free = 1;
+    molecule_t* block = (molecule_t*)ptr - 1;
+    block->is_free = 1;
+
+    // Coalesce backward with any adjacent free blocks
+    while (block->prev && block->prev->is_free) {
+        block->prev->size += sizeof(molecule_t) + block->size;
+        block->prev->next = block->next;
+        if (block->next) {
+            block->next->prev = block->prev;
+        }
+        if (block == tail) {
+            tail = block->prev;
+        }
+        block = block->prev;
+    }
+
+    // Coalesce forward with any adjacent free blocks
+    while (block->next && block->next->is_free) {
+        block->size += sizeof(molecule_t) + block->next->size;
+        block->next = block->next->next;
+        if (block->next) {
+            block->next->prev = block;
+        }
+        if (block->next == tail) {
+            tail = block;
+        }
+    }
 }
 
 #endif // MALLOCULE_IMPL
