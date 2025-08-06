@@ -1,4 +1,5 @@
 #include <stdio.h>
+#include <stdint.h>
 #include <assert.h>
 
 #define MALLOCULE_IMPL
@@ -84,11 +85,35 @@ void test_stress() {
     printf("Rapid churn test passed.\n");
 }
 
+void test_alignment() {
+    printf("\n--- Running Alignment Test ---\n");
+
+    void* p1 = mol_alloc(1);
+    void* p2 = mol_alloc(3);
+    void* p3 = mol_alloc(7);
+    void* p4 = mol_alloc(15);
+
+    assert(p1 != NULL && p2 != NULL && p3 != NULL && p4 != NULL);
+
+    assert((uintptr_t)p1 % ALIGNMENT == 0);
+    assert((uintptr_t)p2 % ALIGNMENT == 0);
+    assert((uintptr_t)p3 % ALIGNMENT == 0);
+    assert((uintptr_t)p4 % ALIGNMENT == 0);
+
+    printf("Test Passed: All pointers are correctly aligned to %d bytes!\n", ALIGNMENT);
+
+    mol_free(p1);
+    mol_free(p2);
+    mol_free(p3);
+    mol_free(p4);
+}
+
 int main() {
     test_basic();
     test_reuse();
     test_linking_and_traversal();
     test_stress();
+    test_alignment();
 
     printf("\n--- TESTS FINISHED SUCCESSFULLY ---\n");
     return 0;
