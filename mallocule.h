@@ -85,12 +85,12 @@ void mol_free(void *ptr) {
     // Coalesce forward with any adjacent free blocks
     while (block->next && block->next->is_free) {
         block->size += sizeof(molecule_t) + block->next->size;
+        if (block->next == tail) {
+            tail = block;
+        }
         block->next = block->next->next;
         if (block->next) {
             block->next->prev = block;
-        }
-        if (block->next == tail) {
-            tail = block;
         }
     }
 }
