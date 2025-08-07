@@ -4,11 +4,12 @@
 #include <stdlib.h>
 
 // TODO:
-// - Split block on allocate if it's too large.
 // - Add mol_realloc()
 // - Add multithreading support
 // - Use mmap for large allocations
-// - canaries and guard pages
+// - Bins for small allocations
+// - Canaries and guard pages
+// - Bit packing for is_free (?)
 
 typedef struct molecule_t {
     size_t size;
@@ -57,6 +58,27 @@ void print_heap_state() {
 }
 #endif
 
+static void split_block(molecule_t* block, size_t size) {
+    size_t min_block_size = ALIGN(sizeof(molecule_t)) + ALIGN(1);
+
+    if (block->size > size + min_block_size) {
+        molecule_t* new_free_block = (molecule_t*)((char*)block + ALIGN(sizeof(molecule_t)) + size);
+        new_free_block->size = block->size - size - ALIGN(sizeof(molecule_t));
+        new_free_block->is_free = 1;
+        new_free_block->next = block->next;
+        new_free_block->prev = block;
+
+        block->size = size;
+        block->next = new_free_block;
+
+        if (new_free_block->next) {
+            new_free_block->next->prev = new_free_block;
+        } else {
+            tail = new_free_block;
+        }
+    }
+}
+
 void* mol_alloc(size_t size) {
     if (size == 0) return NULL;
 
@@ -65,6 +87,7 @@ void* mol_alloc(size_t size) {
     while (curr != NULL) {
         if (curr->is_free && curr->size >= requested_size){
             curr->is_free = 0;
+            split_block(curr, requested_size);
             return (void*)(curr + 1);
         }
         curr = curr->next;
@@ -91,14 +114,10 @@ void* mol_alloc(size_t size) {
     return (void*)(new_block + 1);
 }
 
-void mol_free(void *ptr) {
-    if (ptr == NULL) return;
-    molecule_t* block = (molecule_t*)ptr - 1;
-    block->is_free = 1;
-
+static void coalesce(molecule_t* block) {
     // Coalesce backward with any adjacent free blocks
     while (block->prev && block->prev->is_free) {
-        block->prev->size += sizeof(molecule_t) + block->size;
+        block->prev->size += ALIGN(sizeof(molecule_t)) + block->size;
         block->prev->next = block->next;
         if (block->next) {
             block->next->prev = block->prev;
@@ -111,7 +130,7 @@ void mol_free(void *ptr) {
 
     // Coalesce forward with any adjacent free blocks
     while (block->next && block->next->is_free) {
-        block->size += sizeof(molecule_t) + block->next->size;
+        block->size += ALIGN(sizeof(molecule_t)) + block->next->size;
         if (block->next == tail) {
             tail = block;
         }
@@ -120,6 +139,13 @@ void mol_free(void *ptr) {
             block->next->prev = block;
         }
     }
+}
+
+void mol_free(void *ptr) {
+    if (ptr == NULL) return;
+    molecule_t* block = (molecule_t*)ptr - 1;
+    block->is_free = 1;
+    coalesce(block);
 }
 
 #endif // MALLOCULE_IMPL
