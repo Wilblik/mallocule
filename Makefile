@@ -1,21 +1,16 @@
 CC = gcc
 CFLAGS = -Wall -Wextra
 TARGET = test_mallocule
-SRCS = test.c
-OBJS = $(SRCS:.c=.o)
 
 all: $(TARGET)
 
-$(TARGET): $(OBJS)
-	$(CC) $(CFLAGS) -o $(TARGET) $(OBJS)
-
-%.o: %.c
-	$(CC) $(CFLAGS) -c $< -o $@
+$(TARGET): test.c mallocule.h
+	$(CC) $(CFLAGS) -o $(TARGET) test.c
 
 run: all
 	./$(TARGET)
 
 clean:
-	rm -f $(OBJS) $(TARGET)
+	rm -f $(TARGET)
 
 .PHONY: all clean run
