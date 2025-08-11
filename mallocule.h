@@ -22,8 +22,8 @@ void* mol_alloc(size_t size);
 void mol_free(void* ptr);
 
 #ifdef MALLOCULE_DEBUG
-void print_heap_state();
-#define DEBUG_PRINT_HEAP() print_heap_state()
+void mol_print_heap();
+#define DEBUG_PRINT_HEAP() mol_print_heap()
 #else
 #define DEBUG_PRINT_HEAP() (void)0
 #endif
@@ -33,30 +33,10 @@ void print_heap_state();
 #include <unistd.h>
 
 #define ALIGNMENT 8
-#define ALIGN(size) (((size) + (ALIGNMENT-1)) & ~(ALIGNMENT-1))
+#define ALIGN(size) (((size) + (ALIGNMENT - 1)) & ~(ALIGNMENT - 1))
 
 static molecule_t* head = NULL;
 static molecule_t* tail = NULL;
-
-#ifdef MALLOCULE_DEBUG
-void print_heap_state() {
-    molecule_t* curr = head;
-    if (curr == NULL) {
-        printf("Heap is empty.\n");
-        return;
-    }
-    printf("--- Heap State ---\n");
-    printf("HEAD -> ");
-    while (curr != NULL) {
-        printf("[%s: %zu bytes @ %p]", curr->is_free ? "FREE" : "USED", curr->size, (void*)curr);
-        if (curr->next != NULL) {
-            printf(" <=> ");
-        }
-        curr = curr->next;
-    }
-    printf(" <- TAIL\n------------------\n");
-}
-#endif
 
 static void split_block(molecule_t* block, size_t size) {
     size_t min_block_size = ALIGN(sizeof(molecule_t)) + ALIGN(1);
@@ -85,7 +65,7 @@ void* mol_alloc(size_t size) {
     size_t requested_size = ALIGN(size);
     molecule_t* curr = head;
     while (curr != NULL) {
-        if (curr->is_free && curr->size >= requested_size){
+        if (curr->is_free && curr->size >= requested_size) {
             curr->is_free = 0;
             split_block(curr, requested_size);
             return (void*)(curr + 1);
@@ -95,12 +75,12 @@ void* mol_alloc(size_t size) {
 
     size_t total_block_size = ALIGN(sizeof(molecule_t)) + requested_size;
     molecule_t* new_block = sbrk(total_block_size);
-    if (new_block == (void*) -1) {
-       return NULL;
+    if (new_block == (void*)-1) {
+        return NULL;
     }
 
     new_block->is_free = 0;
-    new_block->size = requested_size,
+    new_block->size = requested_size;
     new_block->next = NULL;
     new_block->prev = tail;
 
@@ -147,6 +127,27 @@ void mol_free(void *ptr) {
     block->is_free = 1;
     coalesce(block);
 }
+
+#ifdef MALLOCULE_DEBUG
+void mol_print_heap() {
+    molecule_t* curr = head;
+    if (curr == NULL) {
+        printf("Heap is empty.\n");
+        return;
+    }
+    printf("--- Heap State ---\n");
+    printf("HEAD -> ");
+    while (curr != NULL) {
+        printf("[%s: %zu bytes @ %p]", curr->is_free ? "FREE" : "USED",
+               curr->size, (void*)curr);
+        if (curr->next != NULL) {
+            printf(" <=> ");
+        }
+        curr = curr->next;
+    }
+    printf(" <- TAIL\n------------------\n");
+}
+#endif
 
 #endif // MALLOCULE_IMPL
 #endif // MALLOCULE_H

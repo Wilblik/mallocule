@@ -3,11 +3,12 @@
 #include <assert.h>
 
 #define MALLOCULE_IMPL
-#define MALLOCULE_DEBUG
+//#define MALLOCULE_DEBUG
 #include "mallocule.h"
 
 void test_basic() {
     printf("\n--- Running Basic Sanity Checks ---\n");
+    DEBUG_PRINT_HEAP();
 
     int *p1 = mol_alloc(sizeof(int));
     assert(p1 != NULL);
@@ -29,6 +30,7 @@ void test_basic() {
 
 void test_alignment() {
     printf("\n--- Running Alignment Test ---\n");
+    DEBUG_PRINT_HEAP();
 
     void* p1 = mol_alloc(1);
     void* p2 = mol_alloc(3);
@@ -50,12 +52,11 @@ void test_alignment() {
     mol_free(p2);
     mol_free(p3);
     mol_free(p4);
-
-    DEBUG_PRINT_HEAP();
 }
 
 void test_reuse() {
     printf("\n--- Running Memory Reuse Test ---\n");
+    DEBUG_PRINT_HEAP();
 
     int *p1 = mol_alloc(sizeof(int));
     assert(p1 != NULL);
@@ -75,14 +76,14 @@ void test_reuse() {
     printf("Test Passed: Memory was successfully reused!\n");
 
     mol_free(p2);
-    DEBUG_PRINT_HEAP();
 }
 
 void test_linking_and_traversal() {
     printf("\n--- Running Linking and Traversal Test ---\n");
+    DEBUG_PRINT_HEAP();
 
-    void *p1 = mol_alloc(100);
-    void *p2 = mol_alloc(100);
+    void *p1 = mol_alloc(50);
+    void *p2 = mol_alloc(50);
     assert(p1 != NULL && p2 != NULL);
     printf("Step 1: Allocated p1 (%p) and p2 (%p).\n", (void*)p1, (void*)p2);
     DEBUG_PRINT_HEAP();
@@ -91,9 +92,9 @@ void test_linking_and_traversal() {
     printf("Step 2: Freed p2. The head (p1) is still in use.\n");
     DEBUG_PRINT_HEAP();
 
-    void *p3 = mol_alloc(100);
+    void *p3 = mol_alloc(50);
     assert(p3 != NULL);
-    printf("Step 3: Allocated p3 (%p). It should reuse the memory from p2.\n", (void*)p3);
+    printf("Step 3: Allocated p3 (%p). It should reuse a free block.\n", (void*)p3);
     DEBUG_PRINT_HEAP();
 
     assert(p3 == p2);
@@ -101,11 +102,34 @@ void test_linking_and_traversal() {
 
     mol_free(p1);
     mol_free(p3);
+}
+
+void test_splitting() {
+    printf("\n--- Running Splitting Test ---\n");
     DEBUG_PRINT_HEAP();
+
+    void* p1 = mol_alloc(100);
+    assert(p1 != NULL);
+    printf("Step 1: Allocated small block p1. This should split the block.\n");
+    DEBUG_PRINT_HEAP();
+
+    void* p2 = mol_alloc(8);
+    assert(p2 != NULL);
+    printf("Step 4: Allocated small block p3. It should use the leftover space.\n");
+    DEBUG_PRINT_HEAP();
+
+    void* expected_p2_addr = (char*)p1 + ALIGN(sizeof(molecule_t)) + ALIGN(100);
+    assert(p2 == expected_p2_addr);
+
+    printf("Test Passed: Block was successfully split and reused!\n");
+
+    mol_free(p1);
+    mol_free(p2);
 }
 
 void test_coalescing() {
     printf("\n--- Running Coalescing Test ---\n");
+    DEBUG_PRINT_HEAP();
 
     void* p1 = mol_alloc(100);
     void* p2 = mol_alloc(100);
@@ -132,18 +156,17 @@ void test_coalescing() {
     printf("Test Passed: Blocks were successfully coalesced!\n");
 
     mol_free(p4);
-    DEBUG_PRINT_HEAP();
 }
 
 void test_stress() {
     printf("\n--- Running Stress Test ---\n");
+    DEBUG_PRINT_HEAP();
 
     void* p;
     p = mol_alloc(0);
     assert(p == NULL);
     mol_free(p);
     printf("malloc(0) test passed.\n");
-    DEBUG_PRINT_HEAP();
 
     void* pointers[100];
     for (int i = 0; i < 100; i++) {
@@ -163,6 +186,7 @@ int main() {
     test_alignment();
     test_reuse();
     test_linking_and_traversal();
+    test_splitting();
     test_coalescing();
     test_stress();
 
