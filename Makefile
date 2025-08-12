@@ -1,5 +1,5 @@
 CC = gcc
-CFLAGS = -Wall -Wextra
+CFLAGS = -g -Wall -Wextra
 TARGET = test_mallocule
 
 all: $(TARGET)
