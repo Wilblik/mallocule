@@ -6,17 +6,20 @@
 //#define MALLOCULE_DEBUG
 #include "mallocule.h"
 
+/* Tests the most basic allocation and read/write functionality. */
 void test_basic() {
     printf("\n--- Running Basic Sanity Checks ---\n");
     DEBUG_PRINT_HEAP();
 
+    /* Test 1: Allocate memory for an integer. */
     int *p1 = mol_alloc(sizeof(int));
-    assert(p1 != NULL);
-    *p1 = 123;
-    assert(*p1 == 123);
+    assert(p1 != NULL); /* Ensure allocation was successful. */
+    *p1 = 123;          /* Write to the memory. */
+    assert(*p1 == 123); /* Read the value back. */
     printf("Test 1 Passed: Allocation and R/W successful.\n");
     DEBUG_PRINT_HEAP();
 
+    /* Test 2: Ensure multiple allocations return distinct pointers. */
     double *p2 = mol_alloc(sizeof(double));
     assert(p2 != NULL);
     assert((void*)p1 != (void*)p2);
@@ -27,10 +30,12 @@ void test_basic() {
     mol_free(p2);
 }
 
+/* Verifies that all allocated pointers are correctly aligned. */
 void test_alignment() {
     printf("\n--- Running Alignment Test ---\n");
     DEBUG_PRINT_HEAP();
 
+    /* Allocate blocks with various unaligned sizes. */
     void* p1 = mol_alloc(1);
     DEBUG_PRINT_HEAP();
     void* p2 = mol_alloc(3);
@@ -42,6 +47,10 @@ void test_alignment() {
 
     assert(p1 != NULL && p2 != NULL && p3 != NULL && p4 != NULL);
 
+    /*
+     * The core check: the memory address (cast to an integer)
+     * should be a perfect multiple of ALIGNMENT.
+     */
     assert((uintptr_t)p1 % ALIGNMENT == 0);
     assert((uintptr_t)p2 % ALIGNMENT == 0);
     assert((uintptr_t)p3 % ALIGNMENT == 0);
@@ -55,6 +64,7 @@ void test_alignment() {
     mol_free(p4);
 }
 
+/* Verifies that a freed block is reused by a subsequent allocation. */
 void test_reuse() {
     printf("\n--- Running Memory Reuse Test ---\n");
     DEBUG_PRINT_HEAP();
@@ -68,6 +78,7 @@ void test_reuse() {
     printf("Step 2: Freed the block.\n");
     DEBUG_PRINT_HEAP();
 
+    /* The next allocation of the same size should reuse the block we just freed. */
     int *p2 = mol_alloc(sizeof(int));
     assert(p2 != NULL);
     printf("Step 3: Allocated a new block at address: %p\n", (void*)p2);
@@ -79,10 +90,15 @@ void test_reuse() {
     mol_free(p2);
 }
 
+/*
+ * Verifies that the allocator can traverse the list to find a free block
+ * that is not at the head of the list.
+ */
 void test_linking_and_traversal() {
     printf("\n--- Running Linking and Traversal Test ---\n");
     DEBUG_PRINT_HEAP();
 
+    /* Create a scenario: [USED] -> [USED] */
     void *p1 = mol_alloc(36);
     DEBUG_PRINT_HEAP();
     void *p2 = mol_alloc(36);
@@ -90,15 +106,18 @@ void test_linking_and_traversal() {
     assert(p1 != NULL && p2 != NULL);
     printf("Step 1: Allocated p1 (%p) and p2 (%p).\n", (void*)p1, (void*)p2);
 
+    /* Create a "hole" in the list: [USED] -> [FREE] */
     mol_free(p2);
     printf("Step 2: Freed p2. The head (p1) is still in use.\n");
     DEBUG_PRINT_HEAP();
 
+    /* The allocator must traverse past p1 to find the free block at p2. */
     void *p3 = mol_alloc(36);
     assert(p3 != NULL);
     printf("Step 3: Allocated p3 (%p). It should reuse a free block.\n", (void*)p3);
     DEBUG_PRINT_HEAP();
 
+    /* The new pointer should be the same as the freed one. */
     assert(p3 == p2);
     printf("Test Passed: Allocator correctly traversed the list to find a free block!\n");
 
@@ -106,6 +125,10 @@ void test_linking_and_traversal() {
     mol_free(p3);
 }
 
+/*
+ * Verifies that a large free block is correctly split into a used part
+ * and a new, smaller free part.
+ */
 void test_splitting() {
     printf("\n--- Running Splitting Test ---\n");
     DEBUG_PRINT_HEAP();
@@ -129,10 +152,12 @@ void test_splitting() {
     mol_free(p2);
 }
 
+/* Verifies that adjacent free blocks are merged into one large block. */
 void test_merging() {
     printf("\n--- Running Merging Test ---\n");
     DEBUG_PRINT_HEAP();
 
+    /* Create a "sandwich": [USED] -> [USED] -> [USED] */
     void* p1 = mol_alloc(100);
     void* p2 = mol_alloc(100);
     void* p3 = mol_alloc(100);
@@ -140,16 +165,19 @@ void test_merging() {
     printf("Step 1: Allocated p1, p2, and p3.\n");
     DEBUG_PRINT_HEAP();
 
+    /* Create the pattern: [FREE] -> [USED] -> [FREE] */
     mol_free(p1);
     mol_free(p3);
     printf("Step 2: Freed p1 and p3.\n");
     DEBUG_PRINT_HEAP();
 
+    /* Freeing the middle block should trigger a merge in both directions. */
     mol_free(p2);
     printf("Step 3: Freed p2, triggering merge.\n");
     DEBUG_PRINT_HEAP();
 
-    void* p4 = mol_alloc(300 + sizeof(molecule_t)); // Request space larger than any single block
+    /* The next allocation should use the single, large merged block. */
+    void* p4 = mol_alloc(300 + sizeof(molecule_t));
     assert(p4 != NULL);
     printf("Step 4: Allocated large block p4.\n");
     DEBUG_PRINT_HEAP();
@@ -160,6 +188,10 @@ void test_merging() {
     mol_free(p4);
 }
 
+/*
+ * Verifies all cases of the realloc function: shrinking, expanding in-place,
+ * and expanding by moving to a new location.
+ */
 void test_realloc() {
     printf("\n--- Running Realloc Test ---\n");
     DEBUG_PRINT_HEAP();
@@ -192,6 +224,10 @@ void test_realloc() {
     mol_free(p4);
 }
 
+/*
+ * A stress test that performs many allocations and frees to check for
+ * subtle bugs or memory corruption.
+ */
 void test_stress() {
     printf("\n--- Running Stress Test ---\n");
     DEBUG_PRINT_HEAP();

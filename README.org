@@ -2,12 +2,21 @@
 
 Tiny memory allocator written in C for educational purposes.
 
-Mallocule provides a basic ~sbrk~-based allocator that manages the program's heap using a simple linked list of memory blocks, or "molecules."
+Mallocule provides a basic ~sbrk~-based allocator that manages the program's heap using a doubly linked list of memory blocks, or "molecules."
+
+* Features
+
+- *Single-header library*: Just drop ~mallocule.h~ into your project.
+- *Dynamic Heap Management*: Acquires memory from the OS using ~sbrk~.
+- *Block Splitting*: Splits large free blocks to reduce wasted memory (internal fragmentation).
+- *Coalescing*: Merges adjacent free blocks to combat heap fragmentation.
+- *Reallocation*: Supports efficient in-place memory resizing with ~mol_realloc~.
 
 * Usage
 
 To use Mallocule, include ~mallocule.h~ in your project. In *one* C file, you must define ~MALLOCULE_IMPL~ before the include to pull in the implementation.
 
+**Basic Allocation:**
 #+BEGIN_SRC c
 #define MALLOCULE_IMPL
 #include "mallocule.h"
@@ -26,9 +35,27 @@ int main() {
 }
 #+END_SRC
 
+**Resizing an Allocation:**
+#+BEGIN_SRC c
+// Allocate memory for 5 integers
+int *arr = mol_alloc(sizeof(int) * 5);
+
+// ... use the array ...
+
+// Resize the array to hold 10 integers
+int *bigger_arr = mol_realloc(arr, sizeof(int) * 10);
+if (bigger_arr) {
+    // The original data is preserved, and there's now space for 5 more.
+    bigger_arr[9] = 100;
+}
+
+mol_free(bigger_arr);
+#+END_SRC
+
 * API
 
 - ~void* mol_alloc(size_t size)~: Allocates a block of memory of at least ~size~ bytes.
+- ~void* mol_realloc(void* ptr, size_t size)~: Resizes a previously allocated memory block.
 - ~void mol_free(void* ptr)~: Frees a previously allocated block of memory.
 
 * Testing

@@ -4,24 +4,36 @@
 #include <stdlib.h>
 #include <string.h>
 
-// TODO:
-// - Add multithreading support
-// - Use mmap for large allocations
-// - Bins for small allocations
-// - Canaries and guard pages
-// - Bit packing for is_free (?)
+/*
+ * TODO:
+ * - Add multithreading support (arenas)
+ * - Use mmap for large allocations
+ * - Bins for small allocations
+ * - Canaries and guard pages for security
+ * - Bit packing for is_free flag optimization
+ */
 
+/*
+ * The header for each memory block ("molecule").
+ * This struct is placed at the beginning of every block of memory
+ * and contains metadata about the block.
+ */
 typedef struct molecule_t {
-    size_t size;
-    unsigned is_free;
-    struct molecule_t* next;
-    struct molecule_t* prev;
+    size_t size;             /* The size of the usable memory area (payload), in bytes. */
+    unsigned is_free;        /* A flag indicating if the block is free (1) or in use (0). */
+    struct molecule_t* next; /* A pointer to the next block in the heap. */
+    struct molecule_t* prev; /* A pointer to the previous block in the heap. */
 } molecule_t;
 
+/* Public API function declarations. */
 void* mol_alloc(size_t size);
 void* mol_realloc(void* ptr, size_t size);
 void mol_free(void* ptr);
 
+/*
+ * Debugging macro to print the heap state.
+ * It expands to a function call if MALLOCULE_DEBUG is defined, otherwise to nothing.
+ */
 #ifdef MALLOCULE_DEBUG
 void mol_print_heap();
 #define DEBUG_PRINT_HEAP() mol_print_heap()
@@ -33,20 +45,29 @@ void mol_print_heap();
 
 #include <unistd.h>
 
+/* The alignment for memory blocks, in bytes. Must be a power of 2. */
 #define ALIGNMENT 8
+/* A macro to round up a size to the nearest multiple of ALIGNMENT. */
 #define ALIGN(size) (((size) + (ALIGNMENT - 1)) & ~(ALIGNMENT - 1))
 
+/* Global pointers to the start (head) and end (tail) of the heap. */
 static molecule_t* head = NULL;
 static molecule_t* tail = NULL;
 
+/* Forward declarations for helper functions. */
 static void split_block(molecule_t* block, size_t new_size);
 static molecule_t* merge_free_blocks(molecule_t* block);
 
+/*
+ * Allocates a block of memory from the heap.
+ * First, it searches the existing list of blocks for a free one that is
+ * large enough. If none is found, it requests more memory from the OS.
+ */
 void* mol_alloc(size_t size) {
     if (size == 0) return NULL;
     size_t requested_size = ALIGN(size);
 
-    /* Check if there is already a free block with reqeuested size */
+    /* First-fit search: find the first free block that's large enough. */
     molecule_t* curr = head;
     while (curr != NULL) {
         if (curr->is_free && curr->size >= requested_size) {
@@ -57,7 +78,7 @@ void* mol_alloc(size_t size) {
         curr = curr->next;
     }
 
-    /* If no appropriate block is found allocate new block */
+    /* If no suitable block is found, extend the heap using sbrk. */
     size_t total_block_size = ALIGN(sizeof(molecule_t)) + requested_size;
     molecule_t* new_block = sbrk(total_block_size);
     if (new_block == (void*)-1) return NULL;
@@ -74,6 +95,13 @@ void* mol_alloc(size_t size) {
     return (void*)(new_block + 1);
 }
 
+/*
+ * Resizes a memory block, handling shrinking and growing.
+ * It attempts to resize in-place first by splitting (for shrinking) or
+ * by merging with adjacent free blocks (for growing). If in-place
+ * expansion is not possible, it allocates a new block, copies the data,
+ * and frees the old block.
+ */
 void* mol_realloc(void* ptr, size_t size) {
     if (ptr == NULL) return mol_alloc(size);
     if (size == 0) {
@@ -84,36 +112,36 @@ void* mol_realloc(void* ptr, size_t size) {
     molecule_t* block = (molecule_t*)ptr - 1;
     size_t new_size = ALIGN(size);
 
-    /* Shrink block if requested size is smaller than current block size*/
+    /* Case 1: Shrink the block if the new size is smaller. */
     if (new_size <= block->size) {
         split_block(block, new_size);
         return ptr;
     }
 
-    /* Check if adjacent blocks can be used */
+    /* Case 2: Try to expand in-place by merging with neighbors. */
     size_t total_free_space = block->size;
     if (block->next && block->next->is_free) total_free_space += ALIGN(sizeof(molecule_t)) + block->next->size;
     if (block->prev && block->prev->is_free) total_free_space += ALIGN(sizeof(molecule_t)) + block->prev->size;
     if (total_free_space >= new_size) {
         size_t original_size = block->size;
 
-        /* Mark current block as free to properly merge all blocks into one */
+        /* Temporarily mark as free to allow the general merge function to work. */
         block->is_free = 1;
         block = merge_free_blocks(block);
-        /* Immediately mark block as used after mergin blocks */
+        /* Reclaim the newly merged block. */
         block->is_free = 0;
 
-        /* Move data to a new block */
+        /* If the block's start address changed (merged backward), move the data. */
         if ((void*)(block + 1) != ptr) {
             memmove((void*)(block + 1), ptr, original_size);
         }
 
-        /* Split block after merging in case it is too big */
+        /* Split the block after in case it's too large. */
         split_block(block, new_size);
         return (void*)(block + 1);
     }
 
-    /* If everything fails then allocate new block and free old one */
+    /* Case 3: Fallback - allocate a new block and move the data. */
     void* new_ptr = mol_alloc(new_size);
     if (new_ptr == NULL) return NULL;
 
@@ -122,6 +150,7 @@ void* mol_realloc(void* ptr, size_t size) {
     return new_ptr;
 }
 
+/* Marks a block as free and merges it with any adjacent free blocks. */
 void mol_free(void *ptr) {
     if (ptr == NULL) return;
     molecule_t* block = (molecule_t*)ptr - 1;
@@ -129,14 +158,13 @@ void mol_free(void *ptr) {
     merge_free_blocks(block);
 }
 
-/* size is expected to be aligned */
+/* Splits a block into a used part and a new free part if it's too large. */
 static void split_block(molecule_t* block, size_t new_size) {
-    /* Minimum usable block size is header + one byte */
+    /* A new block must be large enough to hold its header and at least 1 byte. */
     size_t min_block_size = ALIGN(sizeof(molecule_t)) + ALIGN(1);
 
-    /* If block size is too big then we can split it */
     if (block->size >= new_size + min_block_size) {
-        /* Get start of leftover free space */
+        /* Calculate the address of the new free block in the leftover space. */
         molecule_t* new_free_block = (molecule_t*)((char*)block + ALIGN(sizeof(molecule_t)) + new_size);
         new_free_block->size = block->size - new_size - ALIGN(sizeof(molecule_t));
         new_free_block->is_free = 1;
@@ -149,15 +177,17 @@ static void split_block(molecule_t* block, size_t new_size) {
         if (new_free_block->next) new_free_block->next->prev = new_free_block;
         else tail = new_free_block;
 
-        /* Merge adjacent free blocks to new free block */
+        /* The new free block might be adjacent to another free block. */
         merge_free_blocks(new_free_block);
     }
 }
 
-/* block is expected to be free for merging to work properly */
-/* Returns address of block that consists of all merged free blocks */
+/*
+ * Merges a free block with any adjacent free blocks.
+ * Returns a pointer to the start of the final, merged free block.
+ */
 static molecule_t* merge_free_blocks(molecule_t* block) {
-    /* Merge backward with any adjacent free blocks */
+    /* Merge backward with any adjacent free blocks. */
     while (block->prev && block->prev->is_free) {
         block->prev->size += ALIGN(sizeof(molecule_t)) + block->size;
         block->prev->next = block->next;
@@ -166,7 +196,7 @@ static molecule_t* merge_free_blocks(molecule_t* block) {
         block = block->prev;
     }
 
-    /* Merge forward with any adjacent free blocks */
+    /* Merge forward with any adjacent free blocks. */
     while (block->next && block->next->is_free) {
         block->size += ALIGN(sizeof(molecule_t)) + block->next->size;
         block->next = block->next->next;
@@ -180,6 +210,10 @@ static molecule_t* merge_free_blocks(molecule_t* block) {
 #ifdef MALLOCULE_DEBUG
 #include <stdio.h>
 
+/*
+ * Prints a visual representation of the entire heap state.
+ * Only available when MALLOCULE_DEBUG is defined.
+ */
 void mol_print_heap() {
     printf("--- Heap State ---\n");
     printf("HEAD -> ");
@@ -191,7 +225,7 @@ void mol_print_heap() {
     }
     printf(" <- TAIL\n------------------\n");
 }
-#endif
+#endif /* MALLOCULE DEBUG */
 
-#endif // MALLOCULE_IMPL
-#endif // MALLOCULE_H
+#endif /* MALLOCULE_IMPL */
+#endif /* MALLOCULE_H */
