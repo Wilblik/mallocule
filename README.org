@@ -16,7 +16,7 @@ Mallocule provides a basic ~sbrk~-based allocator that manages the program's hea
 
 To use Mallocule, include ~mallocule.h~ in your project. In *one* C file, you must define ~MALLOCULE_IMPL~ before the include to pull in the implementation.
 
-**Basic Allocation:**
+*Basic Allocation:*
 #+BEGIN_SRC c
 #define MALLOCULE_IMPL
 #include "mallocule.h"
@@ -35,7 +35,7 @@ int main() {
 }
 #+END_SRC
 
-**Resizing an Allocation:**
+*Resizing an Allocation:*
 #+BEGIN_SRC c
 // Allocate memory for 5 integers
 int *arr = mol_alloc(sizeof(int) * 5);
