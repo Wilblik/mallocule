@@ -1,16 +1,17 @@
 CC = gcc
-CFLAGS = -g -Wall -Wextra
-TARGET = test_mallocule
+CFLAGS = -g -Wall -Wextra -pthread -fsanitize=thread
+TARGETS = simple_test thread_test
 
-all: $(TARGET)
+all: $(TARGETS)
 
-$(TARGET): test.c mallocule.h
-	$(CC) $(CFLAGS) -o $(TARGET) test.c
+%: %.c mallocule.h
+	$(CC) $(CFLAGS) -o $@ $<
 
 run: all
-	./$(TARGET)
+	./simple_test
+	./thread_test
 
 clean:
-	rm -f $(TARGET)
+	rm -f $(TARGETS)
 
 .PHONY: all clean run

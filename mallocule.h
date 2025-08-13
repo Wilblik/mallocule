@@ -6,7 +6,7 @@
 
 /*
  * TODO:
- * - Add multithreading support (arenas)
+ * - Add more advanced multithreading support using arenas
  * - Use mmap for large allocations
  * - Bins for small allocations
  * - Canaries and guard pages for security
@@ -44,6 +44,7 @@ void mol_print_heap();
 #ifdef MALLOCULE_IMPL
 
 #include <unistd.h>
+#include <pthread.h>
 
 /* The alignment for memory blocks, in bytes. Must be a power of 2. */
 #define ALIGNMENT 8
@@ -54,7 +55,13 @@ void mol_print_heap();
 static molecule_t* head = NULL;
 static molecule_t* tail = NULL;
 
+/* Define and initialize the global heap mutex */
+static pthread_mutex_t heap_mutex = PTHREAD_MUTEX_INITIALIZER;
+
 /* Forward declarations for helper functions. */
+static void* mol_alloc_unlocked(size_t size);
+static void* mol_realloc_unlocked(void* ptr, size_t size);
+static void mol_free_unlocked(void* ptr);
 static void split_block(molecule_t* block, size_t new_size);
 static molecule_t* merge_free_blocks(molecule_t* block);
 
@@ -64,6 +71,34 @@ static molecule_t* merge_free_blocks(molecule_t* block);
  * large enough. If none is found, it requests more memory from the OS.
  */
 void* mol_alloc(size_t size) {
+    pthread_mutex_lock(&heap_mutex);
+    void* ptr = mol_alloc_unlocked(size);
+    pthread_mutex_unlock(&heap_mutex);
+    return ptr;
+}
+
+/*
+ * Resizes a memory block, handling shrinking and growing.
+ * It attempts to resize in-place first by splitting (for shrinking) or
+ * by merging with adjacent free blocks (for growing). If in-place
+ * expansion is not possible, it allocates a new block, copies the data,
+ * and frees the old block.
+ */
+void* mol_realloc(void* ptr, size_t size) {
+    pthread_mutex_lock(&heap_mutex);
+    void* new_ptr = mol_realloc_unlocked(ptr, size);
+    pthread_mutex_unlock(&heap_mutex);
+    return new_ptr;
+}
+
+/* Marks a block as free and merges it with any adjacent free blocks. */
+void mol_free(void* ptr) {
+    pthread_mutex_lock(&heap_mutex);
+    mol_free_unlocked(ptr);
+    pthread_mutex_unlock(&heap_mutex);
+}
+
+void* mol_alloc_unlocked(size_t size) {
     if (size == 0) return NULL;
     size_t requested_size = ALIGN(size);
 
@@ -95,17 +130,10 @@ void* mol_alloc(size_t size) {
     return (void*)(new_block + 1);
 }
 
-/*
- * Resizes a memory block, handling shrinking and growing.
- * It attempts to resize in-place first by splitting (for shrinking) or
- * by merging with adjacent free blocks (for growing). If in-place
- * expansion is not possible, it allocates a new block, copies the data,
- * and frees the old block.
- */
-void* mol_realloc(void* ptr, size_t size) {
-    if (ptr == NULL) return mol_alloc(size);
+void* mol_realloc_unlocked(void* ptr, size_t size) {
+    if (ptr == NULL) return mol_alloc_unlocked(size);
     if (size == 0) {
-        mol_free(ptr);
+        mol_free_unlocked(ptr);
         return NULL;
     }
 
@@ -142,20 +170,12 @@ void* mol_realloc(void* ptr, size_t size) {
     }
 
     /* Case 3: Fallback - allocate a new block and move the data. */
-    void* new_ptr = mol_alloc(new_size);
+    void* new_ptr = mol_alloc_unlocked(new_size);
     if (new_ptr == NULL) return NULL;
 
     memcpy(new_ptr, ptr, block->size);
-    mol_free(ptr);
+    mol_free_unlocked(ptr);
     return new_ptr;
-}
-
-/* Marks a block as free and merges it with any adjacent free blocks. */
-void mol_free(void *ptr) {
-    if (ptr == NULL) return;
-    molecule_t* block = (molecule_t*)ptr - 1;
-    block->is_free = 1;
-    merge_free_blocks(block);
 }
 
 /* Splits a block into a used part and a new free part if it's too large. */
@@ -180,6 +200,13 @@ static void split_block(molecule_t* block, size_t new_size) {
         /* The new free block might be adjacent to another free block. */
         merge_free_blocks(new_free_block);
     }
+}
+
+void mol_free_unlocked(void* ptr) {
+    if (ptr == NULL) return;
+    molecule_t* block = (molecule_t*)ptr - 1;
+    block->is_free = 1;
+    merge_free_blocks(block);
 }
 
 /*
