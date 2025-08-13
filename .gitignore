@@ -1,2 +1,3 @@
 *.o
-test_mallocule
+simple_test
+thread_test
