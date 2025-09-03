@@ -5,15 +5,6 @@
 #include <string.h>
 
 /*
- * TODO:
- * - Add more advanced multithreading support using arenas
- * - Use mmap for large allocations
- * - Bins for small allocations
- * - Canaries and guard pages for security
- * - Bit packing for is_free flag optimization
- */
-
-/*
  * The header for each memory block ("molecule").
  * This struct is placed at the beginning of every block of memory
  * and contains metadata about the block.
